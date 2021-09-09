@@ -1,7 +1,6 @@
 use soup::{NodeExt, QueryBuilderExt, Soup};
 use std::{collections::HashMap, time::Instant};
 use urlencoding::decode;
-use wikipedia::{http::default::Client, Wikipedia};
 const MAX_REPEATS: u8 = 4;
 
 #[macro_use]

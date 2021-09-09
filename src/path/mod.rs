@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use soup::{NodeExt, QueryBuilderExt, Soup};
 use urlencoding::decode;
 use uuid::Uuid;
-use wikipedia::{http::default::Client, Wikipedia};
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -30,12 +29,21 @@ impl Path {
     }
 }
 
-fn get_next_article_name(wiki: &Wikipedia<Client>, article_name: String) -> String {
+fn get_page_html(article_name: String) -> String {
+    reqwest::blocking::get(format!("https://en.wikipedia.org/wiki/{}", article_name))
+        .unwrap()
+        .text()
+        .unwrap()
+}
+
+fn get_next_article_name(article_name: String) -> String {
     // Get the article content
-    let content = wiki
-        .page_from_title(article_name)
-        .get_html_content()
-        .expect("Failed to get article content");
+
+    let content = get_page_html(article_name);
+    // let content = wiki
+    //     .page_from_title(article_name)
+    //     .get_html_content()
+    //     .expect("Failed to get article content");
 
     // Get all the p tags in the content section of the article
     let content_p_tags = Soup::new(&content)
@@ -111,7 +119,6 @@ pub fn try_get_article_from_article_name(
 }
 
 pub fn generate_path(conn: &MysqlConnection, article_name: &String) -> Path {
-    let wiki = Wikipedia::<Client>::default();
     let mut steps: Vec<Article> = Vec::new();
     let mut seen_article_names: HashMap<String, String> = HashMap::new();
     let mut current_article_name = article_name.clone();
@@ -156,7 +163,7 @@ pub fn generate_path(conn: &MysqlConnection, article_name: &String) -> Path {
             steps.push(article);
         }
 
-        current_article_name = get_next_article_name(&wiki, current_article_name.clone());
+        current_article_name = get_next_article_name(current_article_name.clone());
     }
     if completed_early {
         if database_path.unwrap().is_loop() {
@@ -211,7 +218,6 @@ pub fn get_next_article_from_db(conn: &MysqlConnection, article: &Article) -> Op
 }
 
 pub fn get_path(conn: &MysqlConnection, article: &Article) -> Path {
-    let wiki = Wikipedia::<Client>::default();
     let mut steps: Vec<Article> = Vec::new();
     let mut seen_articles: HashSet<Article> = HashSet::new();
     let mut current_article = Article::new(conn, article.article_name.clone());
@@ -245,8 +251,7 @@ pub fn get_path(conn: &MysqlConnection, article: &Article) -> Path {
         if let Some(article) = get_next_article_from_db(conn, &current_article) {
             current_article = article;
         } else {
-            let next_article_name =
-                get_next_article_name(&wiki, current_article.article_name.clone());
+            let next_article_name = get_next_article_name(current_article.article_name.clone());
             let next_article = Article::new(conn, next_article_name.clone());
             if let Some(id) = try_get_id_from_article_name(conn, next_article_name) {
                 if let Some(previous_article) = steps.last_mut() {
